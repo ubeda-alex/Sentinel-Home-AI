@@ -1,0 +1,17 @@
+test_iphone_notification:
+  alias: Probar notificación al iPhone
+  mode: single
+  sequence:
+    - action: notify.mobile_app_iphone_de_alex
+      data:
+        title: "Prueba Home Assistant"
+        message: "Si ves esto, las notificaciones push al iPhone ya funcionan."
+        data:
+          group: frigate
+          tag: prueba-home-assistant
+          interruption-level: critical
+          push:
+            sound:
+              name: default
+              critical: 1
+              volume: 0.5

@@ -1,0 +1,256 @@
+mqtt:
+  enabled: true
+  host: host.docker.internal
+  port: 1884
+
+version: 0.18-0
+
+# =========================================================
+# DETECTOR DE OBJETOS - Apple Silicon / CoreML
+# =========================================================
+# En Mac mini M4 no hay NVIDIA ni EdgeTPU interno; usamos el Neural Engine/GPU
+# de Apple vía un detector ZMQ corriendo en macOS.
+detectors:
+  apple_silicon:
+    type: zmq
+    endpoint: tcp://host.docker.internal:5555
+
+model:
+  model_type: yolo-generic
+  path: /config/model_cache/yolo.onnx
+  labelmap_path: /labelmap/coco-80.txt
+  width: 320
+  height: 320
+  input_pixel_format: rgb
+  input_tensor: nchw
+  input_dtype: float
+
+# =========================================================
+# NOTIFICACIONES
+# =========================================================
+
+notifications:
+  enabled: true
+  email: alexander.ubeda.herrera@gmail.com
+  cooldown: 15
+
+# =========================================================
+# IA GENERATIVA LOCAL / OLLAMA
+# =========================================================
+# Desactivada: esta Mac es computadora personal y no se usará para generar
+# descripciones IA. Si después hay una máquina dedicada, descomenta este bloque.
+# genai:
+#   ollama_local:
+#     provider: ollama
+#     base_url: http://host.docker.internal:11434
+#     model: qwen3-vl:4b-instruct
+#     roles:
+#       - descriptions
+#       - chat
+#     provider_options:
+#       keep_alive: -1
+#       options:
+#         num_ctx: 16384
+
+# =========================================================
+# RECONOCIMIENTO FACIAL
+# =========================================================
+# "small" usa CPU.
+# No agregues "face" a objects.track porque estás usando
+# el modelo COCO por defecto.
+face_recognition:
+  enabled: true
+  model_size: small
+
+  # Confianza mínima para considerar que hay una cara.
+  detection_threshold: 0.7
+
+  # Tamaño mínimo de cara en píxeles.
+  # Ayuda a evitar intentar reconocer caras demasiado pequeñas.
+  min_area: 750
+
+  # Por debajo de este score se considera desconocido.
+  unknown_score: 0.8
+
+  # Confianza necesaria para asignar un nombre conocido.
+  recognition_threshold: 0.9
+
+  # Cantidad mínima de caras conocidas requeridas para reconocer.
+  min_faces: 1
+
+  # Intentos de reconocimiento por persona detectada.
+  save_attempts: 200
+
+  # Ayuda a descartar capturas demasiado borrosas.
+  blur_confidence_filter: true
+
+# =========================================================
+# GRABACIONES
+# =========================================================
+record:
+  enabled: true
+
+  continuous:
+    days: 0
+
+  motion:
+    days: 1
+
+# =========================================================
+# SNAPSHOTS
+# =========================================================
+snapshots:
+  enabled: true
+
+  retain:
+    default: 1
+
+# =========================================================
+# DETECCIÓN DE OBJETOS
+# =========================================================
+# Frigate primero necesita detectar "person".
+# Después intenta detectar y reconocer la cara de esa persona.
+objects:
+  track:
+    - person
+    - cow
+    - car
+
+  # IA generativa desactivada. Para reactivar descripciones en el futuro,
+  # descomenta el bloque top-level `genai` y este bloque:
+  # genai:
+  #   enabled: true
+  #   objects:
+  #     - person
+  #     - car
+  #   send_triggers:
+  #     tracked_object_end: true
+  #   prompt: >
+  #     Describe en español mexicano, en una sola oración corta y útil para una
+  #     alerta de iPhone, qué está haciendo el objeto detectado y si parece haber
+  #     algo importante como paquete, vehículo, persona rondando o actividad
+  #     inusual. No inventes detalles que no se vean.
+
+  filters:
+    person:
+      min_score: 0.5
+      threshold: 0.7
+
+# =========================================================
+# REVIEW / ALERTAS
+# =========================================================
+# Solo una persona detectada genera una ALERTA.
+#
+# El movimiento sigue funcionando internamente para indicarle
+# a Frigate qué partes del video debe analizar, pero el simple
+# movimiento NO se considera una alerta.
+review:
+  alerts:
+    enabled: true
+    labels:
+      - person
+
+  detections:
+    enabled: false
+
+  # IA generativa para reviews desactivada. Rehabilitar solo si existe una
+  # máquina dedicada para Ollama/visión.
+  # genai:
+  #   enabled: false
+  #   preferred_language: es
+  #   additional_concerns:
+  #     - paquetes o entregas
+  #     - personas rondando o mirando hacia la casa
+  #     - vehiculos estacionados o acercandose
+  #     - actividad inusual cerca de la entrada
+
+# =========================================================
+# CÁMARAS
+# =========================================================
+cameras:
+
+  # =======================================================
+  # NEXXT / TUYA
+  # =======================================================
+  C_mara_del_Cuarto_de_Pila:
+    enabled: true
+
+    ffmpeg:
+      output_args:
+        # Esta cámara guarda H.264 full-range (yuvj420p) y en iPhone las
+        # repeticiones pueden quedar negras aunque el audio sí suene. Regrabamos
+        # solo esta cámara a H.264 yuv420p compatible con Safari/iOS.
+        record: -f segment -segment_time 10 -segment_format mp4 
+          -reset_timestamps 1 -strftime 1 -c:v copy -bsf:v 
+          h264_metadata=video_full_range_flag=0 -c:a aac
+      inputs:
+        - path: 
+            rtsp://host.docker.internal:8556/C%C3%A1mara_del_Cuarto_de_Pila/hd
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+            - record
+
+    detect:
+      enabled: true
+      width: 640
+      height: 360
+      fps: 5
+
+    # Filtros para reducir falsos positivos de animales/zonas del jardín
+    # detectadas como persona. Ajustados para resolución 640x360.
+    objects:
+      filters:
+        person:
+          min_score: 0.6
+          threshold: 0.78
+          min_area: 3000
+          max_area: 65000
+          min_ratio: 0.2
+          max_ratio: 0.8
+
+    face_recognition:
+      enabled: true
+
+    notifications:
+      enabled: true
+      cooldown: 60
+
+  # =======================================================
+  # RING PUERTA PRINCIPAL
+  # =======================================================
+  Ring_Puerta_Principal:
+    enabled: true
+
+    ffmpeg:
+      inputs:
+        - path: rtsp://host.docker.internal:8557/187f88a9a970_live
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+            - record
+
+    detect:
+      enabled: true
+      width: 1440
+      height: 1440
+      fps: 5
+
+    # Sin zonas: detección única de persona con sensibilidad media para Ring.
+    objects:
+      filters:
+        person:
+          # Punto medio para equilibrar detección lejana y falsos positivos.
+          min_score: 0.42
+          threshold: 0.6
+          min_area: 2500
+          max_area: 350000
+          min_ratio: 0.08
+          max_ratio: 0.9
+
+    face_recognition:
+      enabled: true
+
+    notifications:
+      enabled: true
+      cooldown: 60

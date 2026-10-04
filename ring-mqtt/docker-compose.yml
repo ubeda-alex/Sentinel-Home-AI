@@ -1,0 +1,36 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: ring-mqtt-mosquitto
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1884:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  ring-mqtt:
+    image: tsightler/ring-mqtt:latest
+    container_name: ring-mqtt
+    restart: unless-stopped
+    # Limpia locks stale de go2rtc/ring-mqtt al arrancar. Si quedan locks en /tmp,
+    # el stream RTSP responde 404 y Frigate muestra "no frames have been received".
+    entrypoint:
+      - /bin/sh
+      - -c
+      - rm -f /tmp/ring-mqtt-*_live.lock /tmp/ring-mqtt-*_event.lock; exec /init
+    depends_on:
+      - mosquitto
+    ports:
+      # Frigate already uses host 8554 and Tuya bridge uses 8556.
+      # Ring RTSP is exposed only on this Mac at 8557.
+      - "127.0.0.1:8557:8554"
+      # Temporary ring-mqtt web login UI.
+      - "127.0.0.1:55123:55123"
+    volumes:
+      - ./data:/data
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"

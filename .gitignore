@@ -1,0 +1,23 @@
+# Secrets / state
+ring-mqtt/data/ring-state.json
+*.db
+*.sqlite
+*.sqlite3
+.storage/
+secrets.yaml
+known_devices.yaml
+
+# Media / cache
+storage/
+media/
+recordings/
+clips/
+cache/
+*.mp4
+*.jpg
+*.jpeg
+*.png
+*.webp
+
+# OS/editor
+.DS_Store

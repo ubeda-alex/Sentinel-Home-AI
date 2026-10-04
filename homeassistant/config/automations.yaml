@@ -1,0 +1,159 @@
+- id: frigate_person_alert_to_iphone
+  alias: Frigate - persona detectada al iPhone
+  description: >-
+    Manda una alerta crítica inmediata cuando Frigate detecta una persona; no usa
+    zonas ni espera descripción de IA.
+  mode: queued
+  max: 10
+  trigger:
+    - platform: mqtt
+      topic: frigate/events
+  condition:
+    - condition: state
+      entity_id: input_boolean.modo_fuera_de_casa
+      state: "on"
+    - condition: template
+      value_template: >-
+        {{ trigger.payload_json.get('type') == 'new'
+           and trigger.payload_json.get('after', {}).get('label') == 'person' }}
+  action:
+    - variables:
+        event: "{{ trigger.payload_json.get('after', {}) }}"
+        event_id: "{{ event.get('id', '') }}"
+        camera: "{{ event.get('camera', 'camara') }}"
+        camera_name: "{{ camera | replace('_', ' ') | title }}"
+    - action: notify.mobile_app_iphone_de_alex
+      data:
+        title: "Frigate: Persona detectada"
+        message: "Se detectó una persona en {{ camera_name }}."
+        data:
+          tag: "frigate-{{ event_id }}"
+          group: frigate
+          interruption-level: critical
+          push:
+            sound:
+              name: default
+              critical: 1
+              volume: 0.8
+          image: "/api/frigate/notifications/{{ event_id }}/snapshot.jpg"
+          url: "/local/frigate-event.html?event_id={{ event_id }}"
+
+- id: modo_fuera_de_casa_activar_vigilancia
+  alias: Modo fuera de casa - activar vigilancia
+  description: Activa notificaciones, grabación/detección de Frigate y stream/motion de Ring cuando sales de casa.
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: input_boolean.modo_fuera_de_casa
+      to: "on"
+  action:
+    - repeat:
+        for_each:
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/enabled/set
+            payload: "ON"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/detect/set
+            payload: "ON"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/motion/set
+            payload: "ON"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/recordings/set
+            payload: "ON"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/snapshots/set
+            payload: "ON"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/review_alerts/set
+            payload: "ON"
+          - topic: frigate/Ring_Puerta_Principal/enabled/set
+            payload: "ON"
+          - topic: frigate/Ring_Puerta_Principal/detect/set
+            payload: "ON"
+          - topic: frigate/Ring_Puerta_Principal/motion/set
+            payload: "ON"
+          - topic: frigate/Ring_Puerta_Principal/recordings/set
+            payload: "ON"
+          - topic: frigate/Ring_Puerta_Principal/snapshots/set
+            payload: "ON"
+          - topic: frigate/Ring_Puerta_Principal/review_alerts/set
+            payload: "ON"
+          - topic: ring/02655282-5640-4b86-9afa-dda2d584edfa/camera/187f88a9a970/stream/command
+            payload: "ON"
+          - topic: ring/02655282-5640-4b86-9afa-dda2d584edfa/camera/187f88a9a970/motion_detection/command
+            payload: "ON"
+          - topic: ring/02655282-5640-4b86-9afa-dda2d584edfa/camera/187f88a9a970/snapshot_mode/command
+            payload: "Auto"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: "{{ repeat.item.topic }}"
+              payload: "{{ repeat.item.payload }}"
+
+- id: modo_fuera_de_casa_desactivar_vigilancia
+  alias: Modo fuera de casa - desactivar vigilancia
+  description: Apaga notificaciones, grabación/detección de Frigate y stream/motion de Ring cuando estás en casa.
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: input_boolean.modo_fuera_de_casa
+      to: "off"
+  action:
+    - repeat:
+        for_each:
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/enabled/set
+            payload: "OFF"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/detect/set
+            payload: "OFF"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/motion/set
+            payload: "OFF"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/recordings/set
+            payload: "OFF"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/snapshots/set
+            payload: "OFF"
+          - topic: frigate/C_mara_del_Cuarto_de_Pila/review_alerts/set
+            payload: "OFF"
+          - topic: frigate/Ring_Puerta_Principal/enabled/set
+            payload: "OFF"
+          - topic: frigate/Ring_Puerta_Principal/detect/set
+            payload: "OFF"
+          - topic: frigate/Ring_Puerta_Principal/motion/set
+            payload: "OFF"
+          - topic: frigate/Ring_Puerta_Principal/recordings/set
+            payload: "OFF"
+          - topic: frigate/Ring_Puerta_Principal/snapshots/set
+            payload: "OFF"
+          - topic: frigate/Ring_Puerta_Principal/review_alerts/set
+            payload: "OFF"
+          - topic: ring/02655282-5640-4b86-9afa-dda2d584edfa/camera/187f88a9a970/stream/command
+            payload: "OFF"
+          - topic: ring/02655282-5640-4b86-9afa-dda2d584edfa/camera/187f88a9a970/motion_detection/command
+            payload: "OFF"
+          - topic: ring/02655282-5640-4b86-9afa-dda2d584edfa/camera/187f88a9a970/snapshot_mode/command
+            payload: "Disabled"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: "{{ repeat.item.topic }}"
+              payload: "{{ repeat.item.payload }}"
+
+- id: modo_fuera_de_casa_aplicar_al_iniciar
+  alias: Modo fuera de casa - aplicar estado al iniciar Home Assistant
+  description: Reaplica el estado de vigilancia después de reiniciar Home Assistant.
+  mode: single
+  trigger:
+    - platform: homeassistant
+      event: start
+  action:
+    - choose:
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.modo_fuera_de_casa
+              state: "on"
+          sequence:
+            - action: automation.trigger
+              target:
+                entity_id: automation.modo_fuera_de_casa_activar_vigilancia
+              data:
+                skip_condition: true
+      default:
+        - action: automation.trigger
+          target:
+            entity_id: automation.modo_fuera_de_casa_desactivar_vigilancia
+          data:
+            skip_condition: true

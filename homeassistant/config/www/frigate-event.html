@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Repetición Frigate</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0f14;
+      color: #f4f7fb;
+    }
+    header {
+      padding: max(16px, env(safe-area-inset-top)) 16px 10px;
+      background: #111827;
+      border-bottom: 1px solid #263244;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #aab4c0; font-size: 13px; overflow-wrap: anywhere; }
+    main { padding: 16px; }
+    video, img.preview {
+      width: 100%;
+      max-height: 72vh;
+      background: #000;
+      border-radius: 12px;
+      border: 1px solid #263244;
+    }
+    .buttons { display: grid; gap: 10px; margin-top: 14px; }
+    a.button, button {
+      display: block;
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 14px;
+      background: #2563eb;
+      color: white;
+      text-align: center;
+      text-decoration: none;
+      font: inherit;
+      font-weight: 600;
+    }
+    a.secondary, button.secondary { background: #1f2937; }
+    .msg { margin-top: 12px; color: #cbd5e1; line-height: 1.35; }
+    .small { color: #94a3b8; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Repetición de Frigate</h1>
+    <div class="sub" id="eventLabel">Cargando evento…</div>
+  </header>
+  <main>
+    <video id="clip" controls playsinline webkit-playsinline preload="metadata" poster=""></video>
+    <img class="preview" id="preview" alt="Vista previa del evento" hidden />
+    <div class="buttons">
+      <button id="playButton" type="button">Reproducir repetición</button>
+      <button id="fallbackButton" class="secondary" type="button">Probar MP4 alternativo</button>
+      <a class="button secondary" href="/lovelace">Volver a Home Assistant</a>
+    </div>
+    <div class="msg" id="message"></div>
+    <div class="msg small" id="debug"></div>
+  </main>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('event_id') || params.get('id') || '';
+    const eventLabel = document.getElementById('eventLabel');
+    const message = document.getElementById('message');
+    const debug = document.getElementById('debug');
+    const video = document.getElementById('clip');
+    const preview = document.getElementById('preview');
+    const playButton = document.getElementById('playButton');
+    const fallbackButton = document.getElementById('fallbackButton');
+
+    let hlsUrl = '';
+    let mp4Url = '';
+    let snapshotUrl = '';
+    let previewUrl = '';
+
+    function setMessage(text) {
+      message.textContent = text || '';
+    }
+
+    function showPreview(text) {
+      video.hidden = true;
+      preview.hidden = false;
+      preview.src = previewUrl || snapshotUrl;
+      setMessage(text || 'No se pudo reproducir el video; mostrando vista previa del evento.');
+    }
+
+    async function tryPlay() {
+      try {
+        video.hidden = false;
+        preview.hidden = true;
+        await video.play();
+        setMessage('');
+      } catch (err) {
+        setMessage('iPhone no permitió iniciar automático. Toca otra vez Reproducir, o prueba MP4 alternativo.');
+        debug.textContent = err && err.message ? err.message : String(err || '');
+      }
+    }
+
+    if (!eventId) {
+      eventLabel.textContent = 'Falta el ID del evento.';
+      setMessage('La notificación no incluyó event_id.');
+      video.style.display = 'none';
+      playButton.style.display = 'none';
+      fallbackButton.style.display = 'none';
+    } else {
+      const id = encodeURIComponent(eventId);
+      // En iPhone/Safari el MP4 directo de Frigate puede fallar por streaming/range.
+      // HLS (.m3u8) es el formato que mejor reproduce dentro de la app de Home Assistant.
+      hlsUrl = `/api/frigate/notifications/${id}/master.m3u8`;
+      mp4Url = `/api/frigate/notifications/${id}/clip.mp4`;
+      snapshotUrl = `/api/frigate/notifications/${id}/snapshot.jpg`;
+      previewUrl = `/api/frigate/notifications/${id}/event_preview.gif`;
+
+      eventLabel.textContent = eventId;
+      video.poster = snapshotUrl;
+      video.src = hlsUrl;
+      debug.textContent = 'Modo: HLS interno de Home Assistant';
+
+      playButton.addEventListener('click', tryPlay);
+      fallbackButton.addEventListener('click', () => {
+        video.src = mp4Url;
+        debug.textContent = 'Modo: MP4 alternativo';
+        tryPlay();
+      });
+
+      video.addEventListener('loadedmetadata', () => {
+        setMessage('');
+      });
+
+      video.addEventListener('error', () => {
+        const err = video.error;
+        const detail = err ? ` Código ${err.code}.` : '';
+        debug.textContent = `Falló el video.${detail} URL: ${video.currentSrc || video.src}`;
+        showPreview('No se pudo reproducir la repetición todavía. Mostré la vista previa; si el evento acaba de pasar, intenta de nuevo en unos segundos.');
+      });
+    }
+  </script>
+</body>
+</html>

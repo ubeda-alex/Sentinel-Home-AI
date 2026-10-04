@@ -1,0 +1,7 @@
+{
+  "mqtt_url": "mqtt://mosquitto:1883",
+  "enable_cameras": true,
+  "snapshot_mode": "disabled",
+  "livestream_user": "",
+  "livestream_pass": ""
+}
