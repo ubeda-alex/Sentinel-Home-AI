@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Historial de alertas Frigate</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0f14;
+      color: #f4f7fb;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: max(16px, env(safe-area-inset-top)) 16px 12px;
+      background: rgba(17, 24, 39, .96);
+      border-bottom: 1px solid #263244;
+      backdrop-filter: blur(12px);
+    }
+    h1 { font-size: 21px; margin: 0 0 4px; }
+    .sub { color: #aab4c0; font-size: 13px; line-height: 1.35; }
+    main { padding: 14px; display: grid; gap: 12px; }
+    .toolbar { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    input {
+      width: 100%;
+      border: 1px solid #263244;
+      border-radius: 12px;
+      background: #111827;
+      color: #f4f7fb;
+      padding: 12px 13px;
+      font: inherit;
+    }
+    button, a.button {
+      border: 0;
+      border-radius: 12px;
+      background: #2563eb;
+      color: white;
+      padding: 12px 13px;
+      text-decoration: none;
+      font: inherit;
+      font-weight: 700;
+      text-align: center;
+    }
+    .card {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 12px;
+      padding: 12px;
+      background: #111827;
+      border: 1px solid #263244;
+      border-radius: 16px;
+    }
+    .thumb {
+      width: 96px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 12px;
+      background: #05070a;
+      border: 1px solid #263244;
+    }
+    .meta { color: #aab4c0; font-size: 12px; margin-bottom: 5px; }
+    .title { line-height: 1.25; font-size: 15px; font-weight: 750; }
+    .message { color: #cbd5e1; line-height: 1.35; font-size: 13px; margin-top: 4px; }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .links a {
+      color: #dbeafe;
+      background: #1f2937;
+      border-radius: 999px;
+      padding: 7px 10px;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .empty, .error {
+      padding: 16px;
+      color: #cbd5e1;
+      background: #111827;
+      border: 1px solid #263244;
+      border-radius: 16px;
+      line-height: 1.4;
+    }
+    .error { border-color: #7f1d1d; color: #fecaca; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Historial de alertas</h1>
+    <div class="sub" id="status">Cargando alertas…</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Buscar cámara, evento o tipo de alerta…" />
+      <button id="refresh" type="button">Actualizar</button>
+    </div>
+    <div id="list"></div>
+  </main>
+  <script>
+    const list = document.getElementById('list');
+    const status = document.getElementById('status');
+    const search = document.getElementById('search');
+    const refresh = document.getElementById('refresh');
+    let entries = [];
+
+    const fmtDate = value => {
+      if (!value) return 'sin fecha';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return value;
+      return d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+    };
+
+    const labelEs = label => ({ person: 'persona', car: 'vehículo', cow: 'vaca' }[label] || label || 'evento');
+    const cameraName = camera => (camera || 'camara').replaceAll('_', ' ');
+    const safeText = text => String(text || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+    function render() {
+      const q = search.value.trim().toLowerCase();
+      const filtered = entries.filter(e => !q || JSON.stringify(e).toLowerCase().includes(q));
+      status.textContent = `${filtered.length} de ${entries.length} alertas guardadas`;
+      if (!filtered.length) {
+        list.innerHTML = `<div class="empty">No hay alertas guardadas todavía. Cuando Frigate detecte una persona y mande la notificación, aparecerá aquí.</div>`;
+        return;
+      }
+      list.innerHTML = filtered.map(e => `
+        <article class="card">
+          <img class="thumb" loading="lazy" src="${safeText(e.snapshot_url)}" alt="Snapshot del evento" />
+          <div>
+            <div class="meta">${safeText(fmtDate(e.created_at || e.updated_at))} · ${safeText(cameraName(e.camera))} · ${safeText(labelEs(e.label))}</div>
+            <div class="title">${safeText(e.title || 'Frigate: Persona detectada')}</div>
+            <div class="message">${safeText(e.message || 'Alerta crítica enviada al iPhone.')}</div>
+            <div class="links">
+              <a href="${safeText(e.event_url || ('/local/frigate-event.html?event_id=' + encodeURIComponent(e.event_id)))}">Ver repetición</a>
+              <a href="${safeText(e.snapshot_url)}">Snapshot</a>
+            </div>
+          </div>
+        </article>`).join('');
+    }
+
+    async function load() {
+      try {
+        const res = await fetch('/local/frigate-alert-history.json?ts=' + Date.now(), { cache: 'no-store' });
+        if (res.status === 404) {
+          entries = [];
+          render();
+          return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        entries = Array.isArray(data) ? data : [];
+        render();
+      } catch (err) {
+        status.textContent = 'No se pudo cargar el historial';
+        list.innerHTML = `<div class="error">Error cargando /local/frigate-alert-history.json: ${safeText(err.message)}</div>`;
+      }
+    }
+
+    search.addEventListener('input', render);
+    refresh.addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>

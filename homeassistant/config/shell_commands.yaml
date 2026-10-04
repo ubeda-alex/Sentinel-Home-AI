@@ -1,0 +1,14 @@
+frigate_ai_history_append: >-
+  python /config/frigate_ai_history_append.py
+  --event-id "{{ event_id }}"
+  --camera "{{ camera }}"
+  --label "{{ label }}"
+  --description "{{ description | replace('\\', '\\\\') | replace('"', '\\"') | replace('$', '\\$') | replace('`', '\\`') }}"
+
+frigate_alert_history_append: >-
+  python /config/frigate_alert_history_append.py
+  --event-id "{{ event_id }}"
+  --camera "{{ camera }}"
+  --label "{{ label }}"
+  --title "{{ title | replace('\\', '\\\\') | replace('"', '\\"') | replace('$', '\\$') | replace('`', '\\`') }}"
+  --message "{{ message | replace('\\', '\\\\') | replace('"', '\\"') | replace('$', '\\$') | replace('`', '\\`') }}"

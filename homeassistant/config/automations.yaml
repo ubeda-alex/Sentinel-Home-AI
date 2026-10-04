@@ -22,10 +22,20 @@
         event_id: "{{ event.get('id', '') }}"
         camera: "{{ event.get('camera', 'camara') }}"
         camera_name: "{{ camera | replace('_', ' ') | title }}"
+        label: "person"
+        notification_title: "Frigate: Persona detectada"
+        notification_message: "Se detectó una persona en {{ camera_name }}."
+    - action: shell_command.frigate_alert_history_append
+      data:
+        event_id: "{{ event_id }}"
+        camera: "{{ camera }}"
+        label: "{{ label }}"
+        title: "{{ notification_title }}"
+        message: "{{ notification_message }}"
     - action: notify.mobile_app_iphone_de_alex
       data:
-        title: "Frigate: Persona detectada"
-        message: "Se detectó una persona en {{ camera_name }}."
+        title: "{{ notification_title }}"
+        message: "{{ notification_message }}"
         data:
           tag: "frigate-{{ event_id }}"
           group: frigate
